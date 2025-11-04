@@ -7,21 +7,20 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-// --- Panes for layer ordering ---
+// --- Panes for ordering ---
 map.createPane("roadsPane"); map.getPane("roadsPane").style.zIndex = 400;
 map.createPane("collisionsPane"); map.getPane("collisionsPane").style.zIndex = 450;
 map.createPane("heatPane"); map.getPane("heatPane").style.zIndex = 460;
 
-// --- Severity helper ---
+// --- Severity helpers ---
 function graviteColor(value) {
   if (!value) return "green";
   const g = value.toLowerCase();
-  if (g.includes("mortel") || g.includes("grave")) return "red";      // Serious/fatal
-  if (g.includes("léger")) return "yellow";                           // Minor
-  return "green";                                                     // No injury
+  if (g.includes("mortel") || g.includes("grave")) return "red";
+  if (g.includes("léger")) return "yellow";
+  return "green";
 }
 
-// --- Severity category helper ---
 function getSeverityCategory(value) {
   if (!value) return "none";
   const g = value.toLowerCase();
@@ -30,14 +29,14 @@ function getSeverityCategory(value) {
   return "none";
 }
 
-// --- Layer variables ---
+// --- Layers ---
 let bikeData = null;
-let collisionsLayer = L.layerGroup();  // not added to map yet
-let heatLayer = L.layerGroup();
-let roadsLayer = L.layerGroup();
+let collisionsLayer = L.layerGroup().addTo(map);
+let heatLayer = L.layerGroup().addTo(map);
+let roadsLayer = L.layerGroup().addTo(map);
 let layerControl;
 
-// --- Multi-select filter UI ---
+// --- Filter UI ---
 const filtersDiv = L.control({ position: 'topright' });
 filtersDiv.onAdd = function() {
   const div = L.DomUtil.create('div', 'filters p-2 bg-white rounded shadow-sm');
@@ -61,17 +60,17 @@ filtersDiv.onAdd = function() {
 };
 filtersDiv.addTo(map);
 
-// --- Load bike accidents ---
+// --- Load bike accident data ---
 fetch('./bikes.geojson')
   .then(res => res.json())
   .then(data => {
     bikeData = data;
-    renderLayers();      // initial render
+    renderLayers();
     setupFilters();
   })
   .catch(err => console.error("❌ Failed to load bikes.geojson", err));
 
-// --- Render layers ---
+// --- Render filtered layers ---
 function renderLayers() {
   if (!bikeData) return;
 
@@ -96,23 +95,24 @@ function renderLayers() {
     return speedOk && gravOk;
   });
 
-  // --- Add collision points ---
+  // --- Add collisions points ---
   filtered.forEach(f => {
     const latlng = [f.geometry.coordinates[1], f.geometry.coordinates[0]];
-    const marker = L.circleMarker(latlng, {
+    L.circleMarker(latlng, {
       radius: 6,
       fillColor: graviteColor(f.properties.GRAVITE),
       color: "#333",
       weight: 1,
       opacity: 1,
       fillOpacity: 0.8
-    }).bindPopup(`<b>ID:</b> ${f.properties.NO_SEQ_COLL}<br>
-                  <b>Speed:</b> ${f.properties.VITESSE_AUTOR} km/h<br>
-                  <b>Gravité:</b> ${f.properties.GRAVITE}`);
-    collisionsLayer.addLayer(marker);
+    })
+    .bindPopup(`<b>ID:</b> ${f.properties.NO_SEQ_COLL}<br>
+                <b>Speed:</b> ${f.properties.VITESSE_AUTOR} km/h<br>
+                <b>Gravité:</b> ${f.properties.GRAVITE}`)
+    .addTo(collisionsLayer);
   });
 
-  // --- Add heatmap with red=high density, green=low ---
+  // --- Heatmap with red=high density ---
   if (filtered.length > 0) {
     const heatPoints = filtered.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0], 0.6]);
     const heat = L.heatLayer(heatPoints, {
@@ -120,14 +120,10 @@ function renderLayers() {
       radius: 25,
       blur: 20,
       minOpacity: 0.25,
-      gradient: {0.0:'green',0.5:'yellow',1.0:'red'}
+      gradient: {0.0:'green', 0.5:'yellow', 1.0:'red'}
     });
-    heatLayer.addLayer(heat);
+    heat.addTo(heatLayer);
   }
-
-  // Add layers to map if not already
-  if (!map.hasLayer(collisionsLayer)) collisionsLayer.addTo(map);
-  if (!map.hasLayer(heatLayer)) heatLayer.addTo(map);
 
   if (filtered.length > 0) map.fitBounds(collisionsLayer.getBounds());
 }
@@ -158,11 +154,11 @@ fetch('./reseau_cyclable.json')
       "Accident Severity": collisionsLayer,
       "Heatmap": heatLayer,
       "Bike Network": roadsLayer
-    }, {collapsed:false}).addTo(map);
+    }, { collapsed:false }).addTo(map);
   })
   .catch(err => console.error("❌ Failed to load reseau_cyclable.json", err));
 
-// --- Add legends ---
+// --- Legend ---
 const legend = L.control({ position: "bottomright" });
 legend.onAdd = function() {
   const div = L.DomUtil.create("div", "info legend p-2 bg-white rounded shadow-sm");
